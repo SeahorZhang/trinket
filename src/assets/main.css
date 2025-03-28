@@ -13,3 +13,7 @@
   --color-primary-900: #1b4985;
   --color-primary: var(--color-primary-500);
 }
+
+#app {
+  @apply flex flex-col overflow-hidden w-screen h-screen;
+}
