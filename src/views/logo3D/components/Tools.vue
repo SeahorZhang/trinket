@@ -1,17 +1,34 @@
 <script setup lang="ts">
+import type { Color } from 'three'
+
+interface ShapeWithColor {
+  color: Color
+  depth: number
+  startZ: number
+}
+
+interface ModelSize {
+  width: number
+  height: number
+  depth: number
+}
+
+// Props definition with proper typing
 defineProps<{
-  svgShapes: any[]
+  svgShapes: ShapeWithColor[]
   fileName: string
-  modelSize: { width: number, height: number, depth: number }
+  modelSize: ModelSize
 }>()
 
+// Emits with type safety
 const emit = defineEmits<{
   (e: 'open'): void
   (e: 'update:size', size: number): void
-  (e: 'updateStartZ', { index, value }: { index: number, value: Event }): void
-  (e: 'updateDepth', { index, value }: { index: number, value: Event }): void
+  (e: 'update-start-z', { index, value }: { index: number, value: Event }): void
+  (e: 'update-depth', { index, value }: { index: number, value: Event }): void
 }>()
 
+// Default model value with description
 const size = defineModel<number>('size', { default: 37 })
 </script>
 
@@ -55,14 +72,14 @@ const size = defineModel<number>('size', { default: 37 })
             距离：
             <input
               type="number" min="-10" step="0.1" max="10" :value="item.startZ"
-              class="px-1 border-b w-20 inline-block" @change="emit('updateStartZ', { index, value: $event })"
+              class="px-1 border-b w-20 inline-block" @change="emit('update-start-z', { index, value: $event })"
             >
           </label>
           <label class="flex gap-2 items-center" title="拉伸深度">
             深度：
             <input
               type="number" min="0" step="0.1" max="10" :value="item.depth" class="px-1 border-b w-20 inline-block"
-              @change="emit('updateDepth', { index, value: $event })"
+              @change="emit('update-depth', { index, value: $event })"
             >
           </label>
         </div>

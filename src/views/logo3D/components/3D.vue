@@ -4,6 +4,7 @@ import { OrbitControls } from '@tresjs/cientos'
 import { TresCanvas } from '@tresjs/core'
 import { Box3, Color, DoubleSide, Vector3 } from 'three'
 
+// Interfaces with clear property types
 interface ShapeWithColor {
   shape: Shape
   color: Color
@@ -19,42 +20,44 @@ interface ModelSize {
   depth: number
 }
 
+// Emits with type safety
 const emit = defineEmits<{
   (e: 'update:modelSize', value: ModelSize): void
 }>()
 
+// Props with proper typing
 const props = defineProps<{
   svgShapes: ShapeWithColor[]
   scale: number
 }>()
 
+// Reactive state
 const isDark = useDark()
 const groupRef = useTemplateRef<Group>('group')
 const curveSegments = ref(64)
 const modelOffset = ref({ x: 0, y: 0, z: 0 })
 
+// Computed properties
 const modelGroup = computed(() => toRaw(groupRef.value))
 const shownShapes = computed(() => suppressZFighting(props.svgShapes).filter(i => i.depth))
 
 /**
- * 解决 Z-fighting 问题
- * 通过微调深度值来解决拉伸方向上面重叠时的闪烁问题
- * @param shapes
- * @param scale
+ * Z-fighting prevention
+ * Adjust depth values slightly to prevent flickering when shapes overlap
  */
-function suppressZFighting(shapes: ShapeWithColor[], scale = 0.001) {
+function suppressZFighting(shapes: ShapeWithColor[], scale = 0.001): ShapeWithColor[] {
   const depths = new Map<number, number>()
   const offsets = new Map<number, number>()
 
-  return shapes.map((shape) => {
+  // First pass: adjust based on starting Z position
+  const firstPass = shapes.map((shape) => {
     if (!shape.depth)
       return shape
 
     const offset = shape.startZ
-    let offsetCount = 0
+    let offsetCount = offsets.get(offset) || 0
 
-    // eslint-disable-next-line no-cond-assign
-    if ((offsetCount = offsets.get(offset) || 0)) {
+    if (offsetCount) {
       const newOffset = fixFloat(offsetCount * scale)
       shape = {
         ...shape,
@@ -65,15 +68,17 @@ function suppressZFighting(shapes: ShapeWithColor[], scale = 0.001) {
 
     offsets.set(offset, offsetCount + 1)
     return shape
-  }).map((shape) => {
+  })
+
+  // Second pass: adjust based on ending depth
+  return firstPass.map((shape) => {
     if (!shape.depth)
       return shape
 
     const depth = fixFloat(shape.startZ + shape.depth)
-    let depthCount = 0
+    let depthCount = depths.get(depth) || 0
 
-    // eslint-disable-next-line no-cond-assign
-    if ((depthCount = depths.get(depth) || 0)) {
+    if (depthCount) {
       shape = {
         ...shape,
         depth: fixFloat(shape.depth + depthCount * scale),
@@ -84,12 +89,15 @@ function suppressZFighting(shapes: ShapeWithColor[], scale = 0.001) {
   })
 }
 
-function calculateModelSize() {
+/**
+ * Calculate model size from the 3D object
+ */
+function calculateModelSize(): void {
   const group = modelGroup.value
   if (!group)
     return
 
-  // 延迟执行以确保模型已渲染
+  // Delay to ensure the model is rendered
   nextTick(() => {
     try {
       const box = (new Box3()).setFromObject(group, true)
@@ -114,12 +122,19 @@ function calculateModelSize() {
   })
 }
 
-// 监听 group 和 scale 的变化
-watch([() => groupRef.value, () => props.scale, () => props.svgShapes.map(i => [i.depth, i.startZ])], () => {
-  calculateModelSize()
-})
+// Reactivity: recalculate when relevant properties change
+watch(
+  [
+    () => groupRef.value,
+    () => props.scale,
+    () => props.svgShapes.map(i => [i.depth, i.startZ])
+  ],
+  () => {
+    calculateModelSize()
+  }
+)
 
-// 调整相机参数
+// Camera and controls configuration
 const cameraPosition: [number, number, number] = [-50, 50, 100]
 const controlsConfig = {
   enableDamping: true,
@@ -128,51 +143,72 @@ const controlsConfig = {
   maxDistance: 1000,
 }
 
-// 修改材质配置，确保能够正确渲染平面
+// Material configuration for proper rendering
 const materialConfig = ref({
   shininess: 100,
   specular: '#ffffff',
   transparent: true,
   wireframe: false,
   side: DoubleSide,
-  flatShading: false, // 确保平滑渲染
+  flatShading: false,
 })
 
-function fixFloat(num: number) {
+/**
+ * Fix floating point precision issues
+ */
+function fixFloat(num: number): number {
   return Number.parseFloat(num.toFixed(10))
 }
 </script>
 
 <template>
-  <TresCanvas window-size :clear-color="isDark ? '#437568' : '#82DBC5'" :logarithmic-depth-buffer="true">
+  <TresCanvas
+    window-size
+    :clear-color="isDark ? '#437568' : '#82DBC5'"
+    :logarithmic-depth-buffer="true"
+  >
+    <!-- Camera setup -->
     <TresPerspectiveCamera :position="cameraPosition" :look-at="[0, 0, 0]" />
     <OrbitControls v-bind="controlsConfig" />
-    <TresGroup v-if="svgShapes.length" ref="group" :scale="[scale, -scale, 1]">
-      <TresMesh v-for="(item, index) in shownShapes" :key="index"
-        :position="[modelOffset.x, modelOffset.y, modelOffset.z + item.startZ]" :render-order="index + 1">
-        <TresExtrudeGeometry :args="[item.shape, {
-          depth: item.depth,
-          bevelEnabled: false,
-          curveSegments,
-          steps: 1,
-        }]" />
-        <TresMeshPhongMaterial v-bind="materialConfig" :color="item.color" :opacity="item.opacity"
-          :polygon-offset="!!item.polygonOffset" :polygon-offset-factor="item.polygonOffset" />
+
+    <!-- 3D model group -->
+    <TresGroup
+      v-if="svgShapes.length"
+      ref="group"
+      :scale="[scale, -scale, 1]"
+    >
+      <!-- Individual shape meshes -->
+      <TresMesh
+        v-for="(item, index) in shownShapes"
+        :key="index"
+        :position="[modelOffset.x, modelOffset.y, modelOffset.z + item.startZ]"
+        :render-order="index + 1"
+      >
+        <TresExtrudeGeometry
+          :args="[
+            item.shape,
+            {
+              depth: item.depth,
+              bevelEnabled: false,
+              curveSegments,
+              steps: 1,
+            }
+          ]"
+        />
+        <TresMeshPhongMaterial
+          v-bind="materialConfig"
+          :color="item.color"
+          :opacity="item.opacity"
+          :polygon-offset="!!item.polygonOffset"
+          :polygon-offset-factor="item.polygonOffset"
+        />
       </TresMesh>
     </TresGroup>
 
-    <!-- 移除原来的 Torus 默认显示 -->
-
-    <!-- 重新设计的光照系统 -->
-    <!-- 主光源：从右上方打光 -->
+    <!-- Lighting system -->
     <TresDirectionalLight :position="[100, 100, 50]" :intensity="1" />
-    <!-- 侧面补光：从左侧打光 -->
     <TresDirectionalLight :position="[-50, 20, 50]" :intensity="0.4" />
-    <!-- 正面补光：轻微的正面打光 -->
-    <!-- <TresDirectionalLight :position="[0, 0, 100]" :intensity="0.5" /> -->
-    <!-- 柔和的环境光 -->
     <TresAmbientLight :intensity="0.4" />
-    <!-- 半球光：提供更自然的环境光照 -->
     <TresHemisphereLight :args="['#ffffff', '#4444ff', 0.5]" :position="[0, 100, 0]" />
   </TresCanvas>
 </template>
