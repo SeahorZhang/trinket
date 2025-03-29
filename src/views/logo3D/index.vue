@@ -3,6 +3,8 @@
 import type { Group, Shape } from 'three'
 import { Color } from 'three'
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js'
+import { ref, watch, onMounted, computed, nextTick } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 
 // Component imports
 import ThreeD from './components/3D.vue'
@@ -34,6 +36,38 @@ const modelSize = ref<ModelSize>({ width: 0, height: 0, depth: 0 })
 const fileName = ref('点击上传 SVG 文件')
 const fileData = ref<File>()
 const scale = ref(1)
+const modelRef = ref()
+const isLoading = ref(false)
+const loadError = ref('')
+
+// 模型计算和更新处理
+const updateModelSize = (size: ModelSize) => {
+  modelSize.value = size
+}
+
+// 使用防抖优化频繁计算
+const recalculateModel = useDebounceFn(() => {
+  modelRef.value?.calculateModelSize()
+}, 100)
+
+// 提取关键属性的计算属性，用于监视
+const shapeProperties = computed(() =>
+  svgShapes.value.map(s => ({
+    id: s.shape.uuid, // 假设shape有uuid，如果没有可以使用其他唯一标识
+    depth: s.depth,
+    startZ: s.startZ
+  }))
+)
+
+// 使用计算属性进行监视，避免深层比较的性能开销
+watch(
+  [scale, shapeProperties, () => svgShapes.value.length],
+  recalculateModel,
+  { deep: false } // 由于我们已经提取了关键属性，不需要深度监视
+)
+
+// 组件挂载后初始化计算
+onMounted(recalculateModel)
 
 // Computed properties
 const size = computed({
@@ -51,7 +85,11 @@ const size = computed({
  * Calculate scale factor based on current and target sizes
  */
 function calcScale(currentScale: number, currentSize: number, targetSize: number): number {
-  return targetSize / (currentSize / currentScale)
+  // 防止除以零的情况
+  if (currentSize === 0) return currentScale
+
+  // 更准确的比例计算
+  return currentScale * (targetSize / currentSize)
 }
 
 // File handling
@@ -68,9 +106,7 @@ onChange((files: FileList | null) => {
 
   const reader = new FileReader()
   reader.onload = (e) => {
-    const svgData = e.target?.result as string
-    console.log('加载的SVG数据:', svgData)
-    parseSVG(svgData)
+    parseSVG(e.target?.result as string)
   }
   reader.readAsText(file)
 })
@@ -79,60 +115,89 @@ onChange((files: FileList | null) => {
  * Parse SVG data and convert to 3D shapes
  */
 function parseSVG(svgData: string): void {
-  const loader = new SVGLoader()
-  const svgParsed = loader.parse(svgData)
-  console.log('SVG解析结果:', svgParsed)
+  try {
+    isLoading.value = true
+    loadError.value = ''
 
-  // Convert SVG paths to 3D shapes with color
-  svgShapes.value = svgParsed.paths.map((path, pathIndex) => {
-    // Create shapes from path
-    const shapes = SVGLoader.createShapes(path)
-    console.log(`Path ${pathIndex} 创建的形状:`, shapes)
+    const loader = new SVGLoader()
+    const svgParsed = loader.parse(svgData)
 
-    // Get color, prioritize fill over stroke
-    let color = path.userData?.style?.fill
-    if (!color || color === 'none') {
-      color = path.userData?.style?.stroke || '#FFA500'
-      console.log(`Path ${pathIndex} 没有填充颜色，使用描边颜色:`, color)
+    // 使用computed函数优化大型数据处理
+    const processShapes = () => {
+      return svgParsed.paths
+        .flatMap((path) => {
+          const shapes = SVGLoader.createShapes(path)
+
+          // 提取和标准化颜色
+          const style = path.userData?.style || {}
+          const color = (style.fill && style.fill !== 'none')
+            ? style.fill
+            : (style.stroke || '#FFA500')
+          const fillOpacity = style.fillOpacity ?? 1
+
+          return shapes.map((shape) => ({
+            shape: markRaw(shape),
+            color: markRaw(new Color().setStyle(color)),
+            depth: RELIEF_DEPTH,
+            startZ: 0,
+            opacity: fillOpacity,
+            polygonOffset: 0,
+          } as ShapeWithColor))
+        })
     }
 
-    const fillOpacity = path.userData?.style?.fillOpacity ?? 1
+    // 分配处理结果
+    svgShapes.value = processShapes()
 
-    // Create shapes with color and properties
-    return shapes.map((shape) => ({
-      shape: markRaw(shape),
-      color: markRaw(new Color().setStyle(color)),
-      depth: RELIEF_DEPTH,
-      startZ: 0,
-      opacity: fillOpacity,
-      polygonOffset: 0,
-    } as ShapeWithColor))
-  }).flat(1)
+    // 确保深度值有效
+    if (svgShapes.value.length && !svgShapes.value.some(s => s.depth > 0)) {
+      svgShapes.value.forEach(s => s.depth = RELIEF_DEPTH)
+    }
 
-  // Ensure shapes have proper depth
-  if (svgShapes.value.length && !svgShapes.value.some(s => s.depth > 0)) {
-    console.warn('所有形状深度为0, 设置默认深度')
-    svgShapes.value.forEach(s => s.depth = RELIEF_DEPTH)
+    // 处理模型初始大小
+    nextTick(async () => {
+      try {
+        // 先设置一个合理的初始缩放值
+        scale.value = 1
+
+        // 触发模型尺寸计算
+        modelRef.value?.calculateModelSize()
+
+        // 等待尺寸计算完成
+        await nextTick()
+
+        // 计算并设置为期望的大小
+        if (modelSize.value.width > 0) {
+          scale.value = DEFAULT_SIZE / modelSize.value.width
+        }
+      } catch (err) {
+        console.error('设置默认大小时出错:', err)
+      }
+    })
+
+    isLoading.value = false
+  } catch (error) {
+    isLoading.value = false
+    loadError.value = '无法解析SVG文件，请检查文件格式'
+    console.error('SVG解析错误:', error)
   }
-
-  // Update size after rendering
-  nextTick(async () => {
-    await nextTick()
-    size.value = DEFAULT_SIZE
-  })
 }
 
 /**
  * Update the Z position of a shape
  */
 function updateStartZ(e: { index: number, value: Event }): void {
-  if (svgShapes.value[e.index]) {
-    const input = e.value.target as HTMLInputElement
-    const numValue = Number(input.value)
+  const { index, value } = e
+  const shape = svgShapes.value[index]
 
-    if (!isNaN(numValue)) {
-      svgShapes.value[e.index].startZ = numValue
-    }
+  if (!shape) return
+
+  const input = value.target as HTMLInputElement
+  const numValue = Number(input.value)
+
+  if (!isNaN(numValue)) {
+    // 创建新对象以确保响应性
+    svgShapes.value[index] = { ...shape, startZ: numValue }
   }
 }
 
@@ -140,32 +205,27 @@ function updateStartZ(e: { index: number, value: Event }): void {
  * Update the depth of a shape
  */
 function updateDepth(e: { index: number, value: Event }): void {
-  if (svgShapes.value[e.index]) {
-    const input = e.value.target as HTMLInputElement
-    const numValue = Number(input.value)
+  const { index, value } = e
+  const shape = svgShapes.value[index]
 
-    if (!isNaN(numValue)) {
-      svgShapes.value[e.index].depth = numValue
-    }
+  if (!shape) return
+
+  const input = value.target as HTMLInputElement
+  const numValue = Number(input.value)
+
+  if (!isNaN(numValue)) {
+    // 创建新对象以确保响应性
+    svgShapes.value[index] = { ...shape, depth: numValue }
   }
 }
 </script>
 
 <template>
   <div class="min-h-screen w-full flex">
-    <Tools
-      :svg-shapes="svgShapes"
-      :file-name="fileName"
-      :model-size="modelSize"
-      @open="open"
-      v-model:size="size"
-      @update-start-z="updateStartZ"
-      @update-depth="updateDepth"
-    />
-    <ThreeD
-      :svg-shapes="svgShapes"
-      :scale="scale"
-      v-model:model-size="modelSize"
-    />
+    <div class="fixed left-10 top-10 z-50">
+    </div>
+    <Tools :svg-shapes="svgShapes" :file-name="fileName" :model-size="modelSize" @open="open" v-model:size="size"
+      @update-start-z="updateStartZ" @update-depth="updateDepth" />
+    <ThreeD ref="modelRef" :svg-shapes="svgShapes" :scale="scale" @update:model-size="updateModelSize" />
   </div>
 </template>

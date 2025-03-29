@@ -122,17 +122,10 @@ function calculateModelSize(): void {
   })
 }
 
-// Reactivity: recalculate when relevant properties change
-watch(
-  [
-    () => groupRef.value,
-    () => props.scale,
-    () => props.svgShapes.map(i => [i.depth, i.startZ])
-  ],
-  () => {
-    calculateModelSize()
-  }
-)
+// 移除原有的 watch, 改为暴露计算方法供父组件调用
+defineExpose({
+  calculateModelSize
+})
 
 // Camera and controls configuration
 const cameraPosition: [number, number, number] = [-50, 50, 100]
