@@ -1,30 +1,13 @@
 <script setup lang="ts">
-// Imports - grouped by source
-import type { Group, Shape } from 'three'
 import { Color } from 'three'
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js'
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
+import type { ShapeWithColor, ModelSize } from './types'
 
 // Component imports
 import ThreeD from './components/3D.vue'
 import Tools from './components/Tools.vue'
-
-// Types and interfaces
-interface ShapeWithColor {
-  shape: Shape
-  color: Color
-  opacity: number
-  depth: number
-  startZ: number
-  polygonOffset: number
-}
-
-interface ModelSize {
-  width: number
-  height: number
-  depth: number
-}
 
 // Constants
 const RELIEF_DEPTH = 2

@@ -1,15 +1,15 @@
-import type { Color } from 'three'
+import type { Color, Shape } from 'three'
 
 /**
  * 表示具有颜色的形状
  */
 export interface ShapeWithColor {
-  /** three.js颜色对象 */
+  shape: Shape
   color: Color
-  /** 形状深度 */
+  opacity: number
   depth: number
-  /** Z轴起始位置 */
   startZ: number
+  polygonOffset: number
 }
 
 /**

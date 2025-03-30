@@ -1,24 +1,9 @@
 <script lang="ts" setup>
-import type { Group, Shape } from 'three'
+import type { Group, } from 'three'
 import { OrbitControls } from '@tresjs/cientos'
 import { TresCanvas } from '@tresjs/core'
-import { Box3, Color, DoubleSide, Vector3 } from 'three'
-
-// Interfaces with clear property types
-interface ShapeWithColor {
-  shape: Shape
-  color: Color
-  opacity: number
-  depth: number
-  startZ: number
-  polygonOffset: number
-}
-
-interface ModelSize {
-  width: number
-  height: number
-  depth: number
-}
+import { Box3, DoubleSide, Vector3 } from 'three'
+import type { ShapeWithColor, ModelSize } from '../types'
 
 // Emits with type safety
 const emit = defineEmits<{
@@ -155,46 +140,27 @@ function fixFloat(num: number): number {
 </script>
 
 <template>
-  <TresCanvas
-    window-size
-    :clear-color="isDark ? '#437568' : '#82DBC5'"
-    :logarithmic-depth-buffer="true"
-  >
+  <TresCanvas window-size :clear-color="isDark ? '#437568' : '#82DBC5'" :logarithmic-depth-buffer="true">
     <!-- Camera setup -->
     <TresPerspectiveCamera :position="cameraPosition" :look-at="[0, 0, 0]" />
     <OrbitControls v-bind="controlsConfig" />
 
     <!-- 3D model group -->
-    <TresGroup
-      v-if="svgShapes.length"
-      ref="group"
-      :scale="[scale, -scale, 1]"
-    >
+    <TresGroup v-if="svgShapes.length" ref="group" :scale="[scale, -scale, 1]">
       <!-- Individual shape meshes -->
-      <TresMesh
-        v-for="(item, index) in shownShapes"
-        :key="index"
-        :position="[modelOffset.x, modelOffset.y, modelOffset.z + item.startZ]"
-        :render-order="index + 1"
-      >
-        <TresExtrudeGeometry
-          :args="[
-            item.shape,
-            {
-              depth: item.depth,
-              bevelEnabled: false,
-              curveSegments,
-              steps: 1,
-            }
-          ]"
-        />
-        <TresMeshPhongMaterial
-          v-bind="materialConfig"
-          :color="item.color"
-          :opacity="item.opacity"
-          :polygon-offset="!!item.polygonOffset"
-          :polygon-offset-factor="item.polygonOffset"
-        />
+      <TresMesh v-for="(item, index) in shownShapes" :key="index"
+        :position="[modelOffset.x, modelOffset.y, modelOffset.z + item.startZ]" :render-order="index + 1">
+        <TresExtrudeGeometry :args="[
+          item.shape,
+          {
+            depth: item.depth,
+            bevelEnabled: false,
+            curveSegments,
+            steps: 1,
+          }
+        ]" />
+        <TresMeshPhongMaterial v-bind="materialConfig" :color="item.color" :opacity="item.opacity"
+          :polygon-offset="!!item.polygonOffset" :polygon-offset-factor="item.polygonOffset" />
       </TresMesh>
     </TresGroup>
 
