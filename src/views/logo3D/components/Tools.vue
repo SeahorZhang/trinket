@@ -1,17 +1,5 @@
 <script setup lang="ts">
-import type { Color } from 'three'
-
-interface ShapeWithColor {
-  color: Color
-  depth: number
-  startZ: number
-}
-
-interface ModelSize {
-  width: number
-  height: number
-  depth: number
-}
+import type { ShapeWithColor, ModelSize } from '../types'
 
 // Props definition with proper typing
 defineProps<{
